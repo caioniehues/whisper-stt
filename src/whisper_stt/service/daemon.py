@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -52,11 +53,17 @@ class DaemonManager:
     def remove_pid(self) -> None:
         self._pid_path.unlink(missing_ok=True)
     
-    def write_status(self, recording: bool, model: str = "turbo") -> None:
+    def write_status(
+        self,
+        recording: bool,
+        model: str = "turbo",
+        recording_start_time: Optional[float] = None,
+    ) -> None:
         status = {
             "recording": recording,
             "model": model,
             "pid": os.getpid(),
+            "recording_start_time": recording_start_time,
         }
         self._status_path.write_text(json.dumps(status))
     
@@ -96,9 +103,21 @@ def run_daemon(model_name: str = "turbo", language: str = "en") -> int:
     
     manager.write_pid()
     manager.write_status(recording=False, model=model_name)
-    
+
+    # Track recording start time for duration display
+    recording_start_time: Optional[float] = None
+
     def on_state_change(recording: bool) -> None:
-        manager.write_status(recording=recording, model=model_name)
+        nonlocal recording_start_time
+        if recording:
+            recording_start_time = time.time()
+        else:
+            recording_start_time = None
+        manager.write_status(
+            recording=recording,
+            model=model_name,
+            recording_start_time=recording_start_time,
+        )
     
     transcriber = RealtimeTranscriber(
         model_name=model_name,

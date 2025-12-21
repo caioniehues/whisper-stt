@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0d0d0f;
+  --background-secondary: #151518;
+  --background-elevated: #1c1c21;
+  --foreground: #fafafa;
+  --foreground-muted: #71717a;
+  --accent: #f59e0b;
+  --accent-glow: #fbbf24;
+  --accent-dim: #b45309;
+  --border: #27272a;
+  --status-success: #22c55e;
+  --status-error: #ef4444;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-transparent text-foreground font-mono antialiased;
+  }
+}
+
+@layer components {
+  /* LED Segment Display - like vintage audio equipment */
+  .segment-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+    text-shadow:
+      0 0 10px currentColor,
+      0 0 20px currentColor,
+      0 0 30px currentColor;
+  }
+
+  /* Panel styling - recessed hardware look */
+  .hardware-panel {
+    background: linear-gradient(
+      180deg,
+      rgba(21, 21, 24, 0.95) 0%,
+      rgba(13, 13, 15, 0.98) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.03),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+      0 4px 12px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(39, 39, 42, 0.8);
+  }
+
+  /* Recording indicator - pulsing LED */
+  .recording-led {
+    animation: recording-pulse 1.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 6px var(--status-error));
+  }
+
+  @keyframes recording-pulse {
+    0%, 100% {
+      opacity: 1;
+      filter: drop-shadow(0 0 6px var(--status-error));
+    }
+    50% {
+      opacity: 0.6;
+      filter: drop-shadow(0 0 12px var(--status-error));
+    }
+  }
+
+  /* Ready indicator - steady glow */
+  .ready-led {
+    filter: drop-shadow(0 0 4px var(--status-success));
+    animation: led-breathe 3s ease-in-out infinite;
+  }
+
+  @keyframes led-breathe {
+    0%, 100% {
+      filter: drop-shadow(0 0 4px var(--status-success));
+    }
+    50% {
+      filter: drop-shadow(0 0 6px var(--status-success));
+    }
+  }
+
+  /* VU Meter segment */
+  .vu-segment {
+    transition: all 0.15s ease-out;
+  }
+
+  .vu-segment.active {
+    animation: vu-flash 0.1s ease-out;
+  }
+
+  @keyframes vu-flash {
+    0% {
+      filter: brightness(1.5);
+    }
+    100% {
+      filter: brightness(1);
+    }
+  }
+
+  /* Dropdown menu styling */
+  .menu-item {
+    @apply relative flex items-center gap-3 px-3 py-2 text-sm cursor-pointer;
+    @apply text-foreground/80 hover:text-foreground;
+    @apply hover:bg-background-hover transition-colors duration-150;
+  }
+
+  .menu-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 0;
+    background: var(--accent);
+    transition: height 0.15s ease-out;
+  }
+
+  .menu-item:hover::before {
+    height: 60%;
+  }
+
+  /* Screw detail - decorative hardware element */
+  .screw {
+    @apply w-2 h-2 rounded-full;
+    background: linear-gradient(135deg, #3f3f46 0%, #27272a 50%, #18181b 100%);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.3),
+      0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .screw::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    width: 4px;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.4);
+  }
+}
