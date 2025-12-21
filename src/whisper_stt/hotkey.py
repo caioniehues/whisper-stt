@@ -54,16 +54,41 @@ class HotkeyListener:
     def _find_keyboard_device(self) -> str:
         """Auto-detect the keyboard device with F13 support."""
         devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-        
+
+        # Collect candidate devices, preferring actual keyboards over mice
+        candidates = []
         for device in devices:
             capabilities = device.capabilities()
-            # Check if device has key events
-            if ecodes.EV_KEY in capabilities:
-                keys = capabilities[ecodes.EV_KEY]
-                # Check for F13 capability or standard keyboard keys
-                if KEY_F13 in keys or ecodes.KEY_A in keys:
-                    logger.info(f"Found keyboard device: {device.name} at {device.path}")
-                    return device.path
+            if ecodes.EV_KEY not in capabilities:
+                continue
+
+            keys = capabilities[ecodes.EV_KEY]
+            has_f13 = KEY_F13 in keys
+            has_standard_keys = ecodes.KEY_A in keys
+
+            if not (has_f13 or has_standard_keys):
+                continue
+
+            # Prioritize: keyboards with F13 > keyboards > other devices with F13
+            name_lower = device.name.lower()
+            is_keyboard = "keyboard" in name_lower or "keychron" in name_lower
+
+            priority = 0
+            if is_keyboard and has_f13:
+                priority = 3
+            elif is_keyboard:
+                priority = 2
+            elif has_f13:
+                priority = 1
+
+            candidates.append((priority, device))
+
+        if candidates:
+            # Sort by priority (descending) and pick the best
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            best = candidates[0][1]
+            logger.info(f"Found keyboard device: {best.name} at {best.path}")
+            return best.path
                     
         # Fallback: try common keyboard device paths
         common_paths = [

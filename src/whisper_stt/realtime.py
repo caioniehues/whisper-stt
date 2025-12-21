@@ -1,19 +1,22 @@
-"""Real-time audio capture and transcription pipeline."""
+"""Push-to-talk audio capture and transcription pipeline."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-import queue
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
 import pyaudio
 
-STATUS_FILE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "whisper-stt-status.json"
+# Use same path as daemon.py for Waybar compatibility
+XDG_RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+STATE_DIR = XDG_RUNTIME_DIR / "whisper-stt"
+STATUS_FILE = STATE_DIR / "status.json"
 
 from whisper_stt.transcriber import Transcriber
 from whisper_stt.typing import WaylandTyper, get_typer
@@ -28,7 +31,11 @@ FORMAT = pyaudio.paFloat32
 
 
 class RealtimeTranscriber:
-    """Real-time speech-to-text with F13 toggle and Wayland output."""
+    """Push-to-talk speech-to-text with F13 toggle and Wayland output.
+
+    Records audio while F13 is active, then transcribes the complete
+    recording when F13 is released.
+    """
 
     def __init__(
         self,
@@ -48,11 +55,12 @@ class RealtimeTranscriber:
 
         self._audio: Optional[pyaudio.PyAudio] = None
         self._stream: Optional[pyaudio.Stream] = None
-        self._audio_queue: queue.Queue[np.ndarray] = queue.Queue()
-        self._transcription_thread: Optional[threading.Thread] = None
+        self._audio_chunks: list[np.ndarray] = []
+        self._chunks_lock = threading.Lock()
 
         self._running = False
         self._recording = False
+        self._recording_start_time: Optional[float] = None
 
     def _write_status(self) -> None:
         status = {
@@ -60,8 +68,10 @@ class RealtimeTranscriber:
             "running": self._running,
             "model": self.model_name,
             "pid": os.getpid(),
+            "recording_start_time": self._recording_start_time,
         }
         try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
             STATUS_FILE.write_text(json.dumps(status))
         except Exception:
             pass
@@ -76,7 +86,7 @@ class RealtimeTranscriber:
         if self._running:
             return
 
-        logger.info("Initializing real-time transcriber...")
+        logger.info("Initializing push-to-talk transcriber...")
 
         self._transcriber = Transcriber(
             model_name=self.model_name,
@@ -88,17 +98,12 @@ class RealtimeTranscriber:
         self._audio = pyaudio.PyAudio()
 
         self._running = True
-        self._transcription_thread = threading.Thread(
-            target=self._transcription_loop,
-            daemon=True,
-        )
-        self._transcription_thread.start()
 
         self._hotkey = HotkeyListener(on_toggle=self._on_toggle)
         self._hotkey.start()
 
         self._write_status()
-        logger.info("Ready. Press F13 to toggle recording.")
+        logger.info("Ready. Press F13 to start recording, press again to stop and transcribe.")
 
     def stop(self) -> None:
         self._running = False
@@ -107,11 +112,7 @@ class RealtimeTranscriber:
             self._hotkey.stop()
 
         if self._recording:
-            self._stop_recording()
-
-        if self._transcription_thread:
-            self._audio_queue.put(None)
-            self._transcription_thread.join(timeout=2.0)
+            self._stop_recording(transcribe=False)
 
         if self._audio:
             self._audio.terminate()
@@ -121,10 +122,11 @@ class RealtimeTranscriber:
             self._transcriber.unload()
 
         self._clear_status()
-        logger.info("Real-time transcriber stopped.")
+        logger.info("Push-to-talk transcriber stopped.")
 
     def _on_toggle(self, is_recording: bool) -> None:
         self._recording = is_recording
+        self._recording_start_time = time.time() if is_recording else None
         self._write_status()
 
         if self.on_state_change:
@@ -133,10 +135,13 @@ class RealtimeTranscriber:
         if is_recording:
             self._start_recording()
         else:
-            self._stop_recording()
+            self._stop_recording(transcribe=True)
 
     def _start_recording(self) -> None:
         logger.info("Recording started...")
+
+        with self._chunks_lock:
+            self._audio_chunks = []
 
         self._stream = self._audio.open(
             format=FORMAT,
@@ -148,15 +153,30 @@ class RealtimeTranscriber:
         )
         self._stream.start_stream()
 
-    def _stop_recording(self) -> None:
-        logger.info("Recording stopped.")
-
+    def _stop_recording(self, transcribe: bool = True) -> None:
         if self._stream:
             self._stream.stop_stream()
             self._stream.close()
             self._stream = None
 
-        self._audio_queue.put(None)
+        with self._chunks_lock:
+            chunks = self._audio_chunks
+            self._audio_chunks = []
+
+        if not transcribe or not chunks:
+            logger.info("Recording stopped (no transcription).")
+            return
+
+        audio_buffer = np.concatenate(chunks)
+        duration = len(audio_buffer) / SAMPLE_RATE
+        logger.info(f"Recording stopped. Transcribing {duration:.1f}s of audio...")
+
+        # Transcribe in a thread to avoid blocking the hotkey listener
+        threading.Thread(
+            target=self._transcribe_buffer,
+            args=(audio_buffer,),
+            daemon=True,
+        ).start()
 
     def _audio_callback(
         self,
@@ -166,45 +186,25 @@ class RealtimeTranscriber:
         status: int,
     ) -> tuple[None, int]:
         audio_data = np.frombuffer(in_data, dtype=np.float32)
-        self._audio_queue.put(audio_data)
+        with self._chunks_lock:
+            self._audio_chunks.append(audio_data)
         return (None, pyaudio.paContinue)
 
-    def _transcription_loop(self) -> None:
-        audio_buffer = np.array([], dtype=np.float32)
-        min_chunk_samples = int(2.0 * SAMPLE_RATE)
-
-        while self._running:
-            try:
-                chunk = self._audio_queue.get(timeout=0.5)
-            except queue.Empty:
-                continue
-
-            if chunk is None:
-                if len(audio_buffer) > SAMPLE_RATE:
-                    self._process_audio(audio_buffer)
-                audio_buffer = np.array([], dtype=np.float32)
-                continue
-
-            audio_buffer = np.concatenate([audio_buffer, chunk])
-
-            if len(audio_buffer) >= min_chunk_samples:
-                self._process_audio(audio_buffer)
-                overlap = int(0.5 * SAMPLE_RATE)
-                audio_buffer = audio_buffer[-overlap:]
-
-    def _process_audio(self, audio: np.ndarray) -> None:
+    def _transcribe_buffer(self, audio: np.ndarray) -> None:
         try:
             result = self._transcriber.transcribe(audio)
             text = result["text"].strip()
 
             if text:
-                logger.debug(f"Transcribed: {text}")
+                logger.info(f"Transcribed: {text}")
 
                 if self._typer:
                     self._typer.type_text(text + " ")
 
                 if self.on_transcription:
                     self.on_transcription(text)
+            else:
+                logger.info("No speech detected.")
 
         except Exception as e:
             logger.error(f"Transcription error: {e}")
@@ -221,13 +221,20 @@ def run_realtime(
     model_name: str = "turbo",
     language: str = "en",
 ) -> None:
-    """Run the real-time transcriber as a blocking process."""
+    """Run the push-to-talk transcriber as a blocking process."""
     import signal
+
+    def on_state_change(is_recording: bool) -> None:
+        if is_recording:
+            print("\n[REC] Recording...", end=" ", flush=True)
+        else:
+            print("[PROCESSING]", end=" ", flush=True)
 
     transcriber = RealtimeTranscriber(
         model_name=model_name,
         language=language,
-        on_state_change=lambda r: print(f"\n{'[REC]' if r else '[STOP]'}", end=" ", flush=True),
+        on_state_change=on_state_change,
+        on_transcription=lambda text: print(f"\n→ {text}"),
     )
 
     def signal_handler(sig, frame):

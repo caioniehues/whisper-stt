@@ -1,53 +1,91 @@
 # Waybar Integration
 
+Status bar module for whisper-stt with recording timer, model switching, and Sound Studio aesthetics.
+
+## Features
+
+- **Recording timer**: Shows elapsed time when recording (󰍬 02:34)
+- **Status indicators**: Recording (amber), Ready (green), Stopped (gray)
+- **Model cycling**: Scroll up/down to switch models
+- **Model menu**: Right-click to open wofi/rofi model selector
+- **Sound Studio theme**: Matches the bar-widget aesthetic
+
 ## Setup
 
-1. Copy `stt-status.py` to your scripts directory:
+### 1. Copy the script
+
 ```bash
+mkdir -p ~/.config/waybar/scripts
 cp stt-status.py ~/.config/waybar/scripts/
 chmod +x ~/.config/waybar/scripts/stt-status.py
 ```
 
-2. Add to your waybar config (`~/.config/waybar/config`):
+### 2. Add to waybar config
+
+Add to `~/.config/waybar/config`:
+
 ```json
 "custom/stt": {
     "exec": "~/.config/waybar/scripts/stt-status.py",
     "return-type": "json",
     "interval": 1,
-    "on-click": "stt toggle"
+    "on-click": "stt toggle",
+    "on-click-right": "~/.config/waybar/scripts/stt-status.py --menu",
+    "on-scroll-up": "~/.config/waybar/scripts/stt-status.py --next-model",
+    "on-scroll-down": "~/.config/waybar/scripts/stt-status.py --prev-model"
 }
 ```
 
-3. Add to your modules:
+Add to your modules array:
+
 ```json
 "modules-right": ["custom/stt", ...]
 ```
 
-4. Add styling (`~/.config/waybar/style.css`):
-```css
-#custom-stt {
-    padding: 0 10px;
-    color: #6c7086;
-}
+### 3. Add styling
 
-#custom-stt.recording {
-    color: #f38ba8;
-    animation: pulse 1s ease-in-out infinite;
-}
-
-#custom-stt.ready {
-    color: #a6e3a1;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
+Option A: Copy the provided stylesheet:
+```bash
+cat style.css >> ~/.config/waybar/style.css
 ```
 
-## Icons
+Option B: Import in your style.css:
+```css
+@import url("path/to/whisper-stt/contrib/waybar/style.css");
+```
 
-- 󰍬 = microphone (recording)
-- 󰍭 = microphone-off (ready/idle)
+## Interactions
 
-Requires a Nerd Font for icons.
+| Action | Behavior |
+|--------|----------|
+| Left-click | Toggle recording on/off |
+| Right-click | Open model selector (wofi/rofi) |
+| Scroll up | Cycle to next model |
+| Scroll down | Cycle to previous model |
+
+## Display States
+
+| State | Display | Color |
+|-------|---------|-------|
+| Recording | 󰍬 02:34 | Amber (#f59e0b), pulsing |
+| Ready | 󰍭 | Green (#22c55e) |
+| Stopped | 󰍭 | Gray (#71717a), dimmed |
+
+## Requirements
+
+- **Nerd Font**: For microphone icons (󰍬 󰍭)
+- **wofi or rofi**: For model selection menu (optional)
+- **whisper-stt**: The `stt` command must be in PATH
+
+## Troubleshooting
+
+### Module shows nothing
+- Check that `stt daemon` is running
+- Verify status file exists: `cat $XDG_RUNTIME_DIR/whisper-stt/status.json`
+
+### Icons don't render
+- Install a Nerd Font (e.g., JetBrainsMono Nerd Font)
+- Set the font in your waybar config or style.css
+
+### Model menu doesn't appear
+- Install wofi (`pacman -S wofi`) or rofi (`pacman -S rofi`)
