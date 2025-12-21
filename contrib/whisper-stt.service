@@ -1,0 +1,16 @@
+[Unit]
+Description=Whisper STT Real-time Transcription Service
+Documentation=https://github.com/your-repo/whisper-stt
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/stt daemon
+ExecStop=%h/.local/bin/stt stop
+Restart=on-failure
+RestartSec=5
+
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+
+[Install]
+WantedBy=default.target

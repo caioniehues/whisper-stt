@@ -1,0 +1,214 @@
+Metadata-Version: 2.4
+Name: whisper-stt
+Version: 0.1.0
+Summary: Real-time speech-to-text tool optimized for AMD ROCm on Arch Linux/Wayland
+Author: Caio
+License: MIT
+Project-URL: Homepage, https://github.com/caio/whisper-stt
+Project-URL: Repository, https://github.com/caio/whisper-stt
+Keywords: speech-to-text,whisper,rocm,amd,wayland,transcription
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Environment :: X11 Applications :: Qt
+Classifier: Intended Audience :: End Users/Desktop
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Multimedia :: Sound/Audio :: Speech
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: openai-whisper>=20231117
+Requires-Dist: pyaudio>=0.2.14
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: evdev>=1.6.0
+Requires-Dist: PySide6>=6.6.0
+Requires-Dist: pyannote.audio>=3.1.0
+Requires-Dist: pydub>=0.25.1
+Requires-Dist: soundfile>=0.12.1
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+
+# whisper-stt
+Real-time speech-to-text for AMD ROCm on Wayland
+
+## Features
+- **Real-time push-to-talk**: Use the F13 key to trigger instant transcription.
+- **Direct text injection**: Types directly into the focused window using `wtype`.
+- **Meeting transcription**: Full transcription with speaker diarization support.
+- **GUI interface**: Easy-to-use GUI for transcribing audio files.
+- **Background operation**: Runs as a systemd service or tray icon.
+- **Waybar integration**: Real-time status updates in your status bar.
+- **GPU Acceleration**: Optimized for AMD ROCm (tested on RX 7800XT).
+- **High accuracy**: Uses Whisper `large-v3-turbo` model by default.
+
+## Requirements
+- **OS**: Arch Linux (or similar)
+- **Compositor**: Hyprland or Sway (wlroots-based Wayland compositors)
+- **Hardware**: AMD GPU with ROCm support (e.g., RX 7800XT / gfx1101)
+- **Python**: 3.11+
+- **Tools**: `wtype` (for text injection)
+- **Permissions**: User must be in the `input` group for evdev F13 capture
+
+## Installation
+
+### 1. System dependencies
+```bash
+sudo pacman -S wtype python-pip
+```
+
+### 2. Permissions
+Add your user to the `input` group to allow capturing the F13 key:
+```bash
+sudo usermod -aG input $USER
+```
+**Important**: Log out and back in for the changes to take effect!
+
+### 3. PyTorch with ROCm
+Install the ROCm-enabled version of PyTorch:
+```bash
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+```
+
+### 4. Install whisper-stt
+```bash
+cd whisper-stt
+pip install -e .
+```
+
+### 5. Speaker Diarization (Optional)
+If you want to use speaker diarization in meeting mode, you'll need to login to HuggingFace:
+```bash
+huggingface-cli login
+```
+
+## Usage
+
+### Real-time Mode (Push-to-Talk)
+```bash
+stt                    # Foreground mode
+stt daemon             # Background daemon
+stt tray               # With system tray icon
+stt status             # Check daemon status
+stt stop               # Stop daemon
+stt toggle             # Toggle daemon on/off
+```
+
+### Meeting Mode (Audio File Transcription)
+```bash
+stt gui                # Open GUI file picker
+stt meeting.mp3        # Direct file transcription
+stt recording.wav -o notes.md  # Custom output
+```
+
+## Systemd Service Setup
+To run `whisper-stt` automatically in the background:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp contrib/whisper-stt.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now whisper-stt
+
+# Management commands
+systemctl --user status whisper-stt
+systemctl --user restart whisper-stt
+journalctl --user -u whisper-stt -f
+```
+
+## Waybar Integration
+
+### Setup
+```bash
+cp contrib/waybar/stt-status.py ~/.local/bin/
+chmod +x ~/.local/bin/stt-status.py
+```
+
+### Configuration
+Add this to your Waybar `config.json`:
+```json
+"custom/stt": {
+    "exec": "~/.local/bin/stt-status.py",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "stt toggle"
+}
+```
+
+### Styling
+Add this to your Waybar `style.css`:
+```css
+#custom-stt.recording {
+    color: #f38ba8;
+}
+#custom-stt.idle {
+    color: #a6adc8;
+}
+```
+
+## Configuration
+You can customize the behavior using command-line arguments:
+
+- **Model selection**: `--model turbo` (default), `--model large-v3`, `--model medium`
+- **Language**: `--language en` (default), supports all Whisper-supported languages.
+
+## Output Format (Meeting Mode)
+When transcribing meetings, `whisper-stt` generates a structured Markdown file:
+
+```markdown
+# Meeting Title Generated From Content
+**Date:** 2025-12-19
+**Duration:** 00:45:32
+**Speakers:** 2 detected
+
+---
+
+[00:00:00] **Speaker 1:** Welcome everyone...
+
+[00:01:23] **Speaker 2:** Thanks for having us...
+```
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| F13 not detected | Run `evtest` to verify key, check if user is in `input` group |
+| wtype not working | Verify Wayland session: `echo $XDG_SESSION_TYPE` |
+| GPU not detected | Check `rocminfo`, verify PyTorch ROCm installation |
+| Model download fails | Check internet connection, try a smaller model (e.g., `--model medium`) |
+| Permission denied on /dev/input | Add user to `input` group and re-login |
+
+## Project Structure
+```
+whisper-stt/
+├── pyproject.toml
+├── README.md
+├── contrib/
+│   ├── whisper-stt.service
+│   └── waybar/
+│       ├── stt-status.py
+│       └── README.md
+└── src/whisper_stt/
+    ├── cli.py
+    ├── transcriber.py
+    ├── hotkey.py
+    ├── typing.py
+    ├── realtime.py
+    ├── diarization.py
+    ├── meeting.py
+    ├── markdown.py
+    ├── title_generator.py
+    ├── tray.py
+    ├── service/
+    │   └── daemon.py
+    └── gui/
+        ├── main_window.py
+        ├── file_picker.py
+        └── progress.py
+```
+
+## License
+MIT

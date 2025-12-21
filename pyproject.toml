@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whisper-stt"
+version = "0.1.0"
+description = "Real-time speech-to-text tool optimized for AMD ROCm on Arch Linux/Wayland"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Caio"}
+]
+keywords = ["speech-to-text", "whisper", "rocm", "amd", "wayland", "transcription"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "openai-whisper>=20231117",
+    "pyaudio>=0.2.14",
+    "numpy>=1.24.0",
+    "evdev>=1.6.0",
+    "PySide6>=6.6.0",
+    "pyannote.audio>=3.1.0",
+    "pydub>=0.25.1",
+    "soundfile>=0.12.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+stt = "whisper_stt.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/caio/whisper-stt"
+Repository = "https://github.com/caio/whisper-stt"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]

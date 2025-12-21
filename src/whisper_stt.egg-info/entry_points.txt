@@ -1,0 +1,2 @@
+[console_scripts]
+stt = whisper_stt.cli:main
